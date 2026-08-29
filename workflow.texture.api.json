@@ -1,0 +1,585 @@
+{
+  "1": {
+    "inputs": {
+      "ckpt_name": "Juggernaut-XI-byRunDiffusion.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load SDXL checkpoint"
+    }
+  },
+  "2": {
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "tiling": "enable",
+      "copy_model": "Make a copy"
+    },
+    "class_type": "SeamlessTile",
+    "_meta": {
+      "title": "Seamless Tile (X+Y)"
+    }
+  },
+  "3": {
+    "inputs": {
+      "model": [
+        "2",
+        0
+      ],
+      "clip": [
+        "1",
+        1
+      ],
+      "lora_name": "texture-synthesis-topdown-base-condensed.safetensors",
+      "strength_model": 0.7,
+      "strength_clip": 0.7
+    },
+    "class_type": "LoraLoader",
+    "_meta": {
+      "title": "Texture synthesis LoRA"
+    }
+  },
+  "4": {
+    "inputs": {
+      "text": "__POSITIVE__",
+      "clip": [
+        "3",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Positive"
+    }
+  },
+  "5": {
+    "inputs": {
+      "text": "__NEGATIVE__",
+      "clip": [
+        "3",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Negative"
+    }
+  },
+  "6": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty latent 1024"
+    }
+  },
+  "7": {
+    "inputs": {
+      "model": [
+        "3",
+        0
+      ],
+      "seed": 0,
+      "steps": 55,
+      "cfg": 6.5,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "positive": [
+        "4",
+        0
+      ],
+      "negative": [
+        "5",
+        0
+      ],
+      "latent_image": [
+        "6",
+        0
+      ],
+      "denoise": 1.0
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "8": {
+    "inputs": {
+      "vae": [
+        "1",
+        2
+      ],
+      "tiling": "enable",
+      "copy_vae": "Make a copy"
+    },
+    "class_type": "MakeCircularVAE",
+    "_meta": {
+      "title": "Make Circular VAE"
+    }
+  },
+  "9": {
+    "inputs": {
+      "samples": [
+        "7",
+        0
+      ],
+      "vae": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "10": {
+    "inputs": {
+      "images": [
+        "9",
+        0
+      ],
+      "filename_prefix": "albedo1k"
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "SAVE albedo1k"
+    }
+  },
+  "11": {
+    "inputs": {
+      "pixels": [
+        "9",
+        0
+      ],
+      "x_percent": 50.0,
+      "y_percent": 50.0
+    },
+    "class_type": "OffsetImage",
+    "_meta": {
+      "title": "Offset 50/50"
+    }
+  },
+  "12": {
+    "inputs": {
+      "images": [
+        "11",
+        0
+      ],
+      "filename_prefix": "seamcheck"
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "SAVE seamcheck"
+    }
+  },
+  "13": {
+    "inputs": {
+      "image1": [
+        "9",
+        0
+      ],
+      "direction": "right",
+      "match_image_size": true,
+      "spacing_width": 0,
+      "spacing_color": "white",
+      "image2": [
+        "9",
+        0
+      ]
+    },
+    "class_type": "ImageStitch",
+    "_meta": {
+      "title": "Tile x2 horizontally"
+    }
+  },
+  "14": {
+    "inputs": {
+      "image1": [
+        "13",
+        0
+      ],
+      "direction": "down",
+      "match_image_size": true,
+      "spacing_width": 0,
+      "spacing_color": "white",
+      "image2": [
+        "13",
+        0
+      ]
+    },
+    "class_type": "ImageStitch",
+    "_meta": {
+      "title": "Tile x2 vertically -> 2048 grid"
+    }
+  },
+  "15": {
+    "inputs": {
+      "image": [
+        "14",
+        0
+      ],
+      "width": 1152,
+      "height": 1152,
+      "x": 448,
+      "y": 448
+    },
+    "class_type": "ImageCrop",
+    "_meta": {
+      "title": "Wrap-padded tile 1152 (pad 64)"
+    }
+  },
+  "16": {
+    "inputs": {
+      "model_name": "4x-PBRify_UpscalerSPANV4.pth"
+    },
+    "class_type": "UpscaleModelLoader",
+    "_meta": {
+      "title": "Load upscaler"
+    }
+  },
+  "17": {
+    "inputs": {
+      "upscale_model": [
+        "16",
+        0
+      ],
+      "image": [
+        "15",
+        0
+      ]
+    },
+    "class_type": "ImageUpscaleWithModel",
+    "_meta": {
+      "title": "Upscale x4 -> 4608"
+    }
+  },
+  "18": {
+    "inputs": {
+      "image": [
+        "17",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 2304,
+      "height": 2304,
+      "crop": "disabled"
+    },
+    "class_type": "ImageScale",
+    "_meta": {
+      "title": "Resample to 2304 (padded 2K)"
+    }
+  },
+  "19": {
+    "inputs": {
+      "image": [
+        "18",
+        0
+      ],
+      "width": 2048,
+      "height": 2048,
+      "x": 128,
+      "y": 128
+    },
+    "class_type": "ImageCrop",
+    "_meta": {
+      "title": "Crop back albedo"
+    }
+  },
+  "20": {
+    "inputs": {
+      "pixels": [
+        "19",
+        0
+      ],
+      "x_percent": 50.0,
+      "y_percent": 50.0
+    },
+    "class_type": "OffsetImage",
+    "_meta": {
+      "title": "Re-align albedo"
+    }
+  },
+  "21": {
+    "inputs": {
+      "images": [
+        "20",
+        0
+      ],
+      "filename_prefix": "albedo2k"
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "SAVE albedo2k"
+    }
+  },
+  "22": {
+    "inputs": {
+      "model_name": "1x-PBRify_NormalV3.pth"
+    },
+    "class_type": "UpscaleModelLoader",
+    "_meta": {
+      "title": "Load PBRify normal"
+    }
+  },
+  "23": {
+    "inputs": {
+      "upscale_model": [
+        "22",
+        0
+      ],
+      "image": [
+        "18",
+        0
+      ]
+    },
+    "class_type": "ImageUpscaleWithModel",
+    "_meta": {
+      "title": "Normal (padded)"
+    }
+  },
+  "24": {
+    "inputs": {
+      "image": [
+        "23",
+        0
+      ],
+      "width": 2048,
+      "height": 2048,
+      "x": 128,
+      "y": 128
+    },
+    "class_type": "ImageCrop",
+    "_meta": {
+      "title": "Crop back normal"
+    }
+  },
+  "25": {
+    "inputs": {
+      "pixels": [
+        "24",
+        0
+      ],
+      "x_percent": 50.0,
+      "y_percent": 50.0
+    },
+    "class_type": "OffsetImage",
+    "_meta": {
+      "title": "Re-align normal"
+    }
+  },
+  "26": {
+    "inputs": {
+      "images": [
+        "25",
+        0
+      ],
+      "filename_prefix": "normal"
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "SAVE normal"
+    }
+  },
+  "27": {
+    "inputs": {
+      "model_name": "1x-PBRify_RoughnessV2.pth"
+    },
+    "class_type": "UpscaleModelLoader",
+    "_meta": {
+      "title": "Load PBRify roughness"
+    }
+  },
+  "28": {
+    "inputs": {
+      "upscale_model": [
+        "27",
+        0
+      ],
+      "image": [
+        "18",
+        0
+      ]
+    },
+    "class_type": "ImageUpscaleWithModel",
+    "_meta": {
+      "title": "Roughness (padded)"
+    }
+  },
+  "29": {
+    "inputs": {
+      "image": [
+        "28",
+        0
+      ],
+      "width": 2048,
+      "height": 2048,
+      "x": 128,
+      "y": 128
+    },
+    "class_type": "ImageCrop",
+    "_meta": {
+      "title": "Crop back roughness"
+    }
+  },
+  "30": {
+    "inputs": {
+      "pixels": [
+        "29",
+        0
+      ],
+      "x_percent": 50.0,
+      "y_percent": 50.0
+    },
+    "class_type": "OffsetImage",
+    "_meta": {
+      "title": "Re-align roughness"
+    }
+  },
+  "31": {
+    "inputs": {
+      "images": [
+        "30",
+        0
+      ],
+      "filename_prefix": "roughness"
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "SAVE roughness"
+    }
+  },
+  "32": {
+    "inputs": {
+      "model_name": "1x-PBRify_Height.pth"
+    },
+    "class_type": "UpscaleModelLoader",
+    "_meta": {
+      "title": "Load PBRify height"
+    }
+  },
+  "33": {
+    "inputs": {
+      "upscale_model": [
+        "32",
+        0
+      ],
+      "image": [
+        "18",
+        0
+      ]
+    },
+    "class_type": "ImageUpscaleWithModel",
+    "_meta": {
+      "title": "Height (padded)"
+    }
+  },
+  "34": {
+    "inputs": {
+      "image": [
+        "33",
+        0
+      ],
+      "width": 2048,
+      "height": 2048,
+      "x": 128,
+      "y": 128
+    },
+    "class_type": "ImageCrop",
+    "_meta": {
+      "title": "Crop back height"
+    }
+  },
+  "35": {
+    "inputs": {
+      "pixels": [
+        "34",
+        0
+      ],
+      "x_percent": 50.0,
+      "y_percent": 50.0
+    },
+    "class_type": "OffsetImage",
+    "_meta": {
+      "title": "Re-align height"
+    }
+  },
+  "36": {
+    "inputs": {
+      "images": [
+        "35",
+        0
+      ],
+      "filename_prefix": "height"
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "SAVE height"
+    }
+  },
+  "37": {
+    "inputs": {
+      "image": [
+        "18",
+        0
+      ],
+      "mode": "Color to Normals",
+      "color_to_normals_overlap": "LARGE",
+      "normals_to_curvature_blur_radius": "SMALL",
+      "normals_to_height_seamless": true,
+      "auto_download": false
+    },
+    "class_type": "Deep Bump (mtb)",
+    "_meta": {
+      "title": "DeepBump colour->normals"
+    }
+  },
+  "38": {
+    "inputs": {
+      "image": [
+        "37",
+        0
+      ],
+      "width": 2048,
+      "height": 2048,
+      "x": 128,
+      "y": 128
+    },
+    "class_type": "ImageCrop",
+    "_meta": {
+      "title": "Crop back deepbump normal"
+    }
+  },
+  "39": {
+    "inputs": {
+      "pixels": [
+        "38",
+        0
+      ],
+      "x_percent": 50.0,
+      "y_percent": 50.0
+    },
+    "class_type": "OffsetImage",
+    "_meta": {
+      "title": "Re-align deepbump normal"
+    }
+  },
+  "40": {
+    "inputs": {
+      "images": [
+        "39",
+        0
+      ],
+      "filename_prefix": "normal_deepbump"
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "SAVE normal_deepbump"
+    }
+  }
+}
