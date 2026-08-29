@@ -25,7 +25,7 @@ The image installs ComfyUI at `/comfyui`. A network volume mounts at
 | `1x-PBRify_Height.pth` | `models/upscale_models/` | node `32` | 8.9 MB |
 | `4x-UltraSharp.pth` | `models/upscale_models/` | fallback for node `16` | 67.0 MB |
 | `deepbump256.onnx` | `models/deepbump/` | node `37` `Deep Bump (mtb)` (path is a comfy_mtb fallback, not a registered folder) | 26.7 MB |
-| ComfyUI-seamless-tiling | `custom_nodes/` | nodes `2`, `8`, `11`, `20`, `25`, `30`, `35`, `39` | — |
+| ComfyUI-seamless-tiling @ `9225ed5` | `custom_nodes/` | nodes `2`, `8`, `11`, `20`, `25`, `30`, `35`, `39`. **Installed from git by sha, not from the Comfy Registry** — the registry's only version is broken on current ComfyUI. | — |
 | comfy_mtb | `custom_nodes/` | node `37` | — |
 
 Total baked model weight ≈ **7.4 GB**, image ≈ **19-20 GB**. Comfortably under the
@@ -48,7 +48,9 @@ Total baked model weight ≈ **7.4 GB**, image ≈ **19-20 GB**. Comfortably und
    Dockerfile path to `Dockerfile` and the build context to `/`.
 4. Start the build. Expect **20-40 min** — most of it is the 7 GB checkpoint pull
    and comfy_mtb's dependency install. Watch the build log for:
-   - `comfy-node-install` finishing without a traceback for **both** packs;
+   - `comfy-node-install comfy-mtb` finishing without a traceback;
+   - the pinned seamless-tiling step printing its `ls -l` (its `grep -q model.clone()`
+     guard fails the build if the wrong source ever lands);
    - the `ls -l /comfyui/models/upscale_models` line listing **five** files.
 5. Endpoint config (per `PLAN.md`): GPU **24 GB tier first** (L4 / A5000 / 4090),
    **max workers 2**, **active workers 0**, **idle timeout 120 s**, execution
@@ -69,7 +71,8 @@ Use only if Path A is blocked on the GitHub question.
 > packs, plus a volume carrying the 7.4 GB of models.
 
 1. Build a thin image — the `Dockerfile` with every `comfy model download` /
-   PBRify block deleted, keeping only `FROM` and the `comfy-node-install` line.
+   PBRify block deleted, keeping `FROM`, `comfy-node-install comfy-mtb` and the
+   pinned seamless-tiling block.
    Push it to a registry RunPod can pull from.
 2. Create a network volume, ≥ 20 GB, in a datacenter that has 24 GB GPUs.
    **This pins the endpoint to that datacenter and silently filters the GPU

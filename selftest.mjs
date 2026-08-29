@@ -94,7 +94,7 @@ const prompts = loadPrompts();
 t("PROMPTS.md yields 12 materials", prompts.length === 12, String(prompts.length));
 t("every prompt carries the LoRA trigger", prompts.every(p => p.positive.startsWith("colormap,")));
 
-for (const [file, expectSaves] of [["workflow.texture.api.json", 7], ["workflow.texture.fast.api.json", 2]]) {
+for (const [file, expectSaves] of [["workflow.texture.api.json", 6], ["workflow.texture.fast.api.json", 2]]) {
   const tpl = JSON.parse(readFileSync(new URL(file, import.meta.url), "utf8"));
   const wf = buildWorkflow(tpl, { positive: prompts[0].positive, negative: prompts[0].negative, seed: 4242 });
   const nodes = Object.values(wf);

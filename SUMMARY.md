@@ -155,3 +155,135 @@ the first proving round can pick a winner and then delete the loser.
 
 Nothing needs a token. The `Dockerfile` documents the build-secret pattern for a
 future Civitai or gated source rather than carrying a placeholder URL.
+
+---
+
+# Addendum, 2026-08-30 — first live job failed; root cause and fix
+
+Endpoint `ft8d98r8julemf` built and came up Ready, then the first job (fast
+workflow, castle brick) died worker-side:
+
+```
+Execution error: Node Type: SeamlessTile, Node ID: 2, Message: 'NoneType' object is not callable
+Exception ignored in ModelPatcher.__del__: AttributeError: 'ModelPatcherDynamic' object has no attribute 'model'
+```
+
+## Root cause — verified, not inferred
+
+The custom node was installed from the **Comfy Registry**, and the registry copy
+is two years stale.
+
+- `https://api.comfy.org/nodes/comfyui-seamless-tiling/versions` returns exactly
+  **one** version: `1.0.0`, `createdAt 2024-05-23`. There is no second version.
+- I downloaded that exact artifact,
+  `https://cdn.comfy.org/spinagon/comfyui-seamless-tiling/1.0.0/node.zip`
+  (15,292 bytes), and read its `SeamlessTile.py`. Line 32 is
+  `model_copy = copy.deepcopy(model)`.
+- `copy.deepcopy` on a `ModelPatcher` fails on current ComfyUI. That is upstream
+  issue **#17, "Broken with latest version of ComfyUI"**, whose reporter pasted
+  the identical message — `TypeError: 'NoneType' object is not callable`, raised
+  from `copy.py` `_reconstruct`, at `SeamlessTile.py line 32, in run`.
+- The author fixed it in commit **`9225ed5`**, *"fix deepcopy, use clone
+  instead"*, dated **2026-02-12**, and closed #17 with "Fixed, try updating." The
+  reporter confirmed: *"Thanks all working (clone from here not latest version at
+  this time not in ComfyUI Manager)."*
+- That fix **was never published to the registry**. Git master carries it; the
+  registry still serves 2024 code. `comfy-node-install <name>` resolves through
+  the registry, so the build installed the broken copy.
+
+The `ModelPatcherDynamic ... has no attribute 'model'` line is a *symptom*, not a
+second bug: `copy.deepcopy` builds a bare instance through `__reduce_ex__`,
+blows up before populating it, and the half-built object's `__del__` then trips
+over its own missing `self.model`.
+
+I also confirmed the fix is sound against the ComfyUI the image actually runs:
+`ModelPatcher.clone()` (comfy/model_patcher.py) constructs
+`class_(model_override[0], ...)` where `model_override[0]` is `self.model`, and
+`ModelPatcherDynamic` subclasses `ModelPatcher`, so `.model` is present on the
+clone. `worker-comfyui` 5.8.6's `src/start.sh` launches ComfyUI with
+`--disable-auto-launch --disable-metadata --listen --verbose --log-stdout` and no
+`--fast`, so nothing exotic is in play beyond the dynamic patcher this build
+uses by default.
+
+## The second half of the bug, which upstream did NOT fix
+
+`9225ed5` fixes only the MODEL path. I read the pinned commit's source directly
+out of the tarball: line 32 is now `model.clone()`, but **lines 95 and 129 are
+still `copy.deepcopy(vae)`** — `CircularVAEDecode.decode` and
+`MakeCircularVAE.run`.
+
+That matters because `comfy.sd.VAE` owns a ModelPatcher:
+`comfy/sd.py` line 598, `self.patcher = mp(self.first_stage_model, ...)` where
+`mp` is `CoreModelPatcher` or `ModelPatcher`. So deepcopying a VAE deepcopies a
+ModelPatcher and hits the identical failure. Pinning the node alone would have
+moved the crash from node 2 to node 8.
+
+`MakeCircularVAE` has an escape hatch: `copy_vae="Modify in place"` short-circuits
+before the deepcopy and patches `vae.first_stage_model` directly. **Both
+workflows now use it.** `CircularVAEDecode` has no equivalent option and is
+unusable on current ComfyUI — flagged in `test_local.md` and in the Dockerfile.
+
+Mutating the cached VAE in place is safe in this specific graph: every request
+this endpoint serves wants a circular VAE, the patch only rebinds
+`Conv2d._conv_forward` so re-applying it is idempotent, and node `9` is the only
+VAE consumer. `SeamlessTile` keeps `copy_model="Make a copy"` because
+`.clone()` works and gives the LoRA patch per-request isolation.
+
+## What changed
+
+| file | change |
+| --- | --- |
+| `Dockerfile` | `comfy-node-install comfyui-seamless-tiling comfy-mtb` → `comfy-node-install comfy-mtb`. New step installs `spinagon/ComfyUI-seamless-tiling` **pinned to sha `9225ed5`** from `codeload.github.com/.../tar.gz/<sha>` via python3 + urllib + tarfile (no curl, matching the base image, and no git dependency). It first `rm -rf`s any registry-installed copy under either casing, and ends with `grep -q 'model.clone()' ... SeamlessTile.py` so a wrong source **fails the build** instead of failing a job. Long comment block records the whole diagnosis in place. |
+| `_gen_workflows.py` | node `8` `MakeCircularVAE.copy_vae`: `"Make a copy"` → `"Modify in place"`, with the reason in a comment so nobody "tidies" it back. |
+| `workflow.texture.api.json` | regenerated. 40 nodes, all 7 outputs unchanged. |
+| `workflow.texture.fast.api.json` | regenerated. 12 nodes, both outputs unchanged. |
+| `test_local.md` | level 1a now greps the installed source for `model.clone()` rather than trusting registration; two new rows in the failure-mode table for node 2 and node 8. |
+| `CHECKLIST.md` | model/file map records the sha pin and why; build-log watch item and the Path B thin-image recipe updated. |
+
+## Verified vs assumed, for this fix
+
+**Verified.**
+- Registry has one version, 1.0.0, 2024-05-23 (versions API).
+- The registry artifact's `SeamlessTile.py` line 32 is `copy.deepcopy(model)` —
+  downloaded and read.
+- Upstream issue #17 body, resolution and the reporter's confirmation.
+- Commit `9225ed5` content — downloaded the tarball and read the file: `.clone()`
+  at 32, `copy.deepcopy(vae)` still at 95 and 129.
+- The pack has no dependencies (pyproject declares none; the repo tree at that
+  sha has no `requirements.txt`), so a file drop is a complete install.
+- `comfy.sd.VAE.patcher` is a ModelPatcher (comfy/sd.py:595-598).
+- `ModelPatcher.clone()` sets `.model` on the clone; `ModelPatcherDynamic`
+  extends `ModelPatcher`.
+- The exact install command runs clean on real paths: tarball fetched
+  (891,907 bytes), extracted, renamed, and the `grep -q` guard passes. The
+  `filter='data'` kwarg is applied only when `tarfile.data_filter` exists, so it
+  works on both older and 3.14+ Pythons.
+- Both regenerated graphs pass `_gen_workflows.py` (`PROBLEMS: none`) and all 20
+  `selftest.mjs` checks.
+
+**Assumed.**
+- That `model.clone()` succeeds on *this* image's ComfyUI. Upstream's reporter
+  confirmed it on a Feb-2026 build; worker-comfyui 5.8.6 pins a ~June-2026 build
+  with `comfy_aimdo` / `ModelPatcherDynamic`. I read `clone()` in current master
+  and it is structurally fine, but I could not execute it.
+- That `MakeCircularVAE` in-place patching survives this build's dynamic weight
+  offloading. `comfy.ops` Conv2d subclasses call `self._conv_forward` after their
+  weight cast, which is the hook the patch replaces, so it should — untested.
+- That `codeload.github.com` is reachable from RunPod's builder. `github.com`
+  release downloads already worked in the successful build, and codeload is the
+  same host family, but it is a new hostname for this build.
+
+## Confidence
+
+**Node 2 fails again: very unlikely.** The cause is fully identified, the fixed
+source is pinned by sha, and the build now fails loudly if the wrong source
+lands.
+
+**Node 8 fails next: unlikely, and it was the real trap** — pinning alone would
+not have caught it. The in-place branch provably never calls `deepcopy`.
+
+**The full 40-node graph runs end to end on the first retry: moderate.** Nodes 2
+and 8 are now addressed on evidence, but nodes 13-40 have still never executed
+anywhere. Run the **fast** workflow first — it exercises exactly the two repaired
+nodes and nothing else, for a fraction of the GPU time — and only then the full
+graph.

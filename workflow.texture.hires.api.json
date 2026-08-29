@@ -138,46 +138,6 @@
       "title": "VAE Decode"
     }
   },
-  "10": {
-    "inputs": {
-      "images": [
-        "9",
-        0
-      ],
-      "filename_prefix": "albedo1k"
-    },
-    "class_type": "SaveImage",
-    "_meta": {
-      "title": "SAVE albedo1k"
-    }
-  },
-  "11": {
-    "inputs": {
-      "pixels": [
-        "9",
-        0
-      ],
-      "x_percent": 50.0,
-      "y_percent": 50.0
-    },
-    "class_type": "OffsetImage",
-    "_meta": {
-      "title": "Offset 50/50"
-    }
-  },
-  "12": {
-    "inputs": {
-      "images": [
-        "11",
-        0
-      ],
-      "filename_prefix": "seamcheck"
-    },
-    "class_type": "SaveImage",
-    "_meta": {
-      "title": "SAVE seamcheck"
-    }
-  },
   "13": {
     "inputs": {
       "image1": [
@@ -275,35 +235,10 @@
       "title": "Resample to 2304 (padded 2K)"
     }
   },
-  "22": {
+  "19": {
     "inputs": {
-      "model_name": "1x-PBRify_NormalV3.pth"
-    },
-    "class_type": "UpscaleModelLoader",
-    "_meta": {
-      "title": "Load PBRify normal"
-    }
-  },
-  "23": {
-    "inputs": {
-      "upscale_model": [
-        "22",
-        0
-      ],
       "image": [
         "18",
-        0
-      ]
-    },
-    "class_type": "ImageUpscaleWithModel",
-    "_meta": {
-      "title": "Normal (padded)"
-    }
-  },
-  "40": {
-    "inputs": {
-      "image": [
-        "23",
         0
       ],
       "width": 2048,
@@ -313,13 +248,13 @@
     },
     "class_type": "ImageCrop",
     "_meta": {
-      "title": "Crop back normal"
+      "title": "Crop back albedo hires"
     }
   },
-  "41": {
+  "20": {
     "inputs": {
       "pixels": [
-        "40",
+        "19",
         0
       ],
       "x_percent": 50.0,
@@ -327,204 +262,20 @@
     },
     "class_type": "OffsetImage",
     "_meta": {
-      "title": "Re-align normal"
+      "title": "Re-align albedo hires"
     }
   },
-  "43": {
-    "inputs": {
-      "image": [
-        "41",
-        0
-      ],
-      "upscale_method": "lanczos",
-      "width": 1024,
-      "height": 1024,
-      "crop": "disabled"
-    },
-    "class_type": "ImageScale",
-    "_meta": {
-      "title": "Down to 1024 normal"
-    }
-  },
-  "42": {
+  "21": {
     "inputs": {
       "images": [
-        "43",
+        "20",
         0
       ],
-      "filename_prefix": "normal"
+      "filename_prefix": "albedo2k"
     },
     "class_type": "SaveImage",
     "_meta": {
-      "title": "SAVE normal"
-    }
-  },
-  "27": {
-    "inputs": {
-      "model_name": "1x-PBRify_RoughnessV2.pth"
-    },
-    "class_type": "UpscaleModelLoader",
-    "_meta": {
-      "title": "Load PBRify roughness"
-    }
-  },
-  "28": {
-    "inputs": {
-      "upscale_model": [
-        "27",
-        0
-      ],
-      "image": [
-        "18",
-        0
-      ]
-    },
-    "class_type": "ImageUpscaleWithModel",
-    "_meta": {
-      "title": "Roughness (padded)"
-    }
-  },
-  "50": {
-    "inputs": {
-      "image": [
-        "28",
-        0
-      ],
-      "width": 2048,
-      "height": 2048,
-      "x": 128,
-      "y": 128
-    },
-    "class_type": "ImageCrop",
-    "_meta": {
-      "title": "Crop back roughness"
-    }
-  },
-  "51": {
-    "inputs": {
-      "pixels": [
-        "50",
-        0
-      ],
-      "x_percent": 50.0,
-      "y_percent": 50.0
-    },
-    "class_type": "OffsetImage",
-    "_meta": {
-      "title": "Re-align roughness"
-    }
-  },
-  "53": {
-    "inputs": {
-      "image": [
-        "51",
-        0
-      ],
-      "upscale_method": "lanczos",
-      "width": 1024,
-      "height": 1024,
-      "crop": "disabled"
-    },
-    "class_type": "ImageScale",
-    "_meta": {
-      "title": "Down to 1024 roughness"
-    }
-  },
-  "52": {
-    "inputs": {
-      "images": [
-        "53",
-        0
-      ],
-      "filename_prefix": "roughness"
-    },
-    "class_type": "SaveImage",
-    "_meta": {
-      "title": "SAVE roughness"
-    }
-  },
-  "32": {
-    "inputs": {
-      "model_name": "1x-PBRify_Height.pth"
-    },
-    "class_type": "UpscaleModelLoader",
-    "_meta": {
-      "title": "Load PBRify height"
-    }
-  },
-  "33": {
-    "inputs": {
-      "upscale_model": [
-        "32",
-        0
-      ],
-      "image": [
-        "18",
-        0
-      ]
-    },
-    "class_type": "ImageUpscaleWithModel",
-    "_meta": {
-      "title": "Height (padded)"
-    }
-  },
-  "60": {
-    "inputs": {
-      "image": [
-        "33",
-        0
-      ],
-      "width": 2048,
-      "height": 2048,
-      "x": 128,
-      "y": 128
-    },
-    "class_type": "ImageCrop",
-    "_meta": {
-      "title": "Crop back height"
-    }
-  },
-  "61": {
-    "inputs": {
-      "pixels": [
-        "60",
-        0
-      ],
-      "x_percent": 50.0,
-      "y_percent": 50.0
-    },
-    "class_type": "OffsetImage",
-    "_meta": {
-      "title": "Re-align height"
-    }
-  },
-  "63": {
-    "inputs": {
-      "image": [
-        "61",
-        0
-      ],
-      "upscale_method": "lanczos",
-      "width": 1024,
-      "height": 1024,
-      "crop": "disabled"
-    },
-    "class_type": "ImageScale",
-    "_meta": {
-      "title": "Down to 1024 height"
-    }
-  },
-  "62": {
-    "inputs": {
-      "images": [
-        "63",
-        0
-      ],
-      "filename_prefix": "height"
-    },
-    "class_type": "SaveImage",
-    "_meta": {
-      "title": "SAVE height"
+      "title": "SAVE albedo2k"
     }
   }
 }

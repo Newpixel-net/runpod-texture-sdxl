@@ -46,10 +46,23 @@ for n in ['SeamlessTile','MakeCircularVAE','OffsetImage','CircularVAEDecode','De
 "
 ```
 
-Every line must say `OK`. A `MISS` on `SeamlessTile` means
-`comfy-node-install comfyui-seamless-tiling` silently failed; a `MISS` on
-`Deep Bump (mtb)` usually means comfy_mtb's dependency install died (it pulls
-onnxruntime-gpu and rembg) — check the build log rather than the pod.
+Every line must say `OK`. A `MISS` on `Deep Bump (mtb)` usually means comfy_mtb's
+dependency install died (it pulls onnxruntime-gpu and rembg) — check the build
+log rather than the pod.
+
+`SeamlessTile` registering is **not** sufficient — the Comfy Registry's only
+published version of that pack is broken on current ComfyUI. Confirm the pinned
+source actually landed:
+
+```bash
+grep -n 'model.clone()\|deepcopy' /comfyui/custom_nodes/ComfyUI-seamless-tiling/SeamlessTile.py
+```
+
+You want `model.clone()` on the MODEL path. If you see `copy.deepcopy(model)`,
+the registry version is installed and `SeamlessTile` will fail at execution with
+`'NoneType' object is not callable`. The Dockerfile has a `grep -q` guard that
+fails the build in that case, so this should be impossible — check it anyway if
+a job dies on node 2.
 
 `ImageCrop` is marked deprecated in current ComfyUI (superseded by `ImageCropV2`,
 which takes a `BOUNDING_BOX` input that is awkward in API JSON). Deprecated nodes
@@ -146,6 +159,8 @@ That is `test_endpoint.mjs`; see `CHECKLIST.md` steps 9-12.
 
 | symptom | cause |
 | --- | --- |
+| `SeamlessTile` / node 2: `'NoneType' object is not callable` | The Comfy Registry version (1.0.0, published 2024-05-23, never republished) is installed. It calls `copy.deepcopy(model)`, which cannot copy a ModelPatcher on current ComfyUI. Upstream issue #17; fixed only in git commit `9225ed5`. The Dockerfile installs that commit by sha instead of using the registry. |
+| `MakeCircularVAE` / node 8: the same error | `copy_vae` is set to `Make a copy`. Upstream never fixed the VAE half — that branch still calls `copy.deepcopy(vae)`, and `comfy.sd.VAE` owns a `.patcher` ModelPatcher. Both workflows must keep `copy_vae: "Modify in place"`. `CircularVAEDecode` has no in-place option at all and must not be used. |
 | Visible cross in `seamcheck` | `SeamlessTile` or `MakeCircularVAE` not applied. Both are required — the UNet alone leaves a few drifting pixels at each edge that the VAE decoder bakes in. |
 | Seam only on one axis | `tiling` set to `x_only` / `y_only` somewhere. Both nodes want `enable`. |
 | Faint seam at 2K but clean at 1K | wrap-pad branch is bypassed or `PAD` is too small for the upscaler's receptive field. Raise `PAD` (and therefore `CROP1`) in `_gen_workflows.py` and regenerate. |

@@ -64,10 +64,22 @@ def core():
     ], "KSampler")
     # The VAE decoder must be circular too, or the last few pixels of each edge
     # drift and the tile fails at the seam even though the latent was tileable.
+    #
+    # copy_vae MUST stay "Modify in place". The alternative branch of this node
+    # is `copy.deepcopy(vae)`, and comfy.sd.VAE owns a .patcher ModelPatcher,
+    # which current ComfyUI cannot deepcopy - the same upstream bug that took
+    # SeamlessTile down with "'NoneType' object is not callable". Upstream fixed
+    # only the MODEL path (commit 9225ed5); the VAE path is still broken, and
+    # "Modify in place" is the branch that never calls deepcopy.
+    #
+    # Mutating the cached VAE is safe here and nowhere near as dirty as it
+    # sounds: every request this endpoint serves wants a circular VAE, the patch
+    # only rebinds Conv2d._conv_forward so re-applying it is idempotent, and
+    # node 9 is the only VAE consumer in the graph.
     g["8"] = node("MakeCircularVAE", [
         ("vae", ["1", 2]),
         ("tiling", "enable"),
-        ("copy_vae", "Make a copy"),
+        ("copy_vae", "Modify in place"),
     ], "Make Circular VAE")
     g["9"] = node("VAEDecode", [("samples", ["7", 0]), ("vae", ["8", 0])], "VAE Decode")
     g["10"] = node("SaveImage", [("images", ["9", 0]), ("filename_prefix", "albedo1k")],
@@ -116,15 +128,25 @@ def wrap_pad(g):
     return g
 
 
-def crop_back(g, nid, src, prefix, title):
-    """Crop the 128 px wrap margin off a 2304 plate and undo the +1024 shift."""
-    a, b, c = str(nid), str(nid + 1), str(nid + 2)
+def crop_back(g, nid, src, prefix, title, down=None):
+    """Crop the 128 px wrap margin off a 2304 plate and undo the +1024 shift.
+    down=N inserts a lanczos resize to NxN before the save: RunPod drops the
+    whole output payload (silently - COMPLETED with no output field) when the
+    base64 response exceeds ~20MB, so per-request images must stay small."""
+    a, b, c, d = str(nid), str(nid + 1), str(nid + 2), str(nid + 3)
     g[a] = node("ImageCrop", [
         ("image", src), ("width", OUT), ("height", OUT), ("x", PAD2), ("y", PAD2),
     ], "Crop back " + title)
     g[b] = node("OffsetImage", [("pixels", [a, 0]), ("x_percent", 50.0), ("y_percent", 50.0)],
                 "Re-align " + title)
-    g[c] = node("SaveImage", [("images", [b, 0]), ("filename_prefix", prefix)],
+    save_src = b
+    if down:
+        g[d] = node("ImageScale", [
+            ("image", [b, 0]), ("upscale_method", "lanczos"),
+            ("width", down), ("height", down), ("crop", "disabled"),
+        ], "Down to %d %s" % (down, title))
+        save_src = d
+    g[c] = node("SaveImage", [("images", [save_src, 0]), ("filename_prefix", prefix)],
                 "SAVE " + prefix)
     return g
 
@@ -132,34 +154,39 @@ def crop_back(g, nid, src, prefix, title):
 def full_graph():
     g = core()
     wrap_pad(g)
-    crop_back(g, 19, ["18", 0], "albedo2k", "albedo")
 
     g["22"] = node("UpscaleModelLoader", [("model_name", NORMAL_M)], "Load PBRify normal")
     g["23"] = node("ImageUpscaleWithModel", [("upscale_model", ["22", 0]), ("image", ["18", 0])],
                    "Normal (padded)")
-    crop_back(g, 24, ["23", 0], "normal", "normal")
+    crop_back(g, 40, ["23", 0], "normal", "normal", down=BASE)
 
     g["27"] = node("UpscaleModelLoader", [("model_name", ROUGH_M)], "Load PBRify roughness")
     g["28"] = node("ImageUpscaleWithModel", [("upscale_model", ["27", 0]), ("image", ["18", 0])],
                    "Roughness (padded)")
-    crop_back(g, 29, ["28", 0], "roughness", "roughness")
+    crop_back(g, 50, ["28", 0], "roughness", "roughness", down=BASE)
 
     g["32"] = node("UpscaleModelLoader", [("model_name", HEIGHT_M)], "Load PBRify height")
     g["33"] = node("ImageUpscaleWithModel", [("upscale_model", ["32", 0]), ("image", ["18", 0])],
                    "Height (padded)")
-    crop_back(g, 34, ["33", 0], "height", "height")
+    crop_back(g, 60, ["33", 0], "height", "height", down=BASE)
 
-    # Second opinion on the normal map. DeepBump is tile-based with its own
-    # overlap, so it is fed the padded plate too and cropped identically.
-    g["37"] = node("Deep Bump (mtb)", [
-        ("image", ["18", 0]),
-        ("mode", "Color to Normals"),
-        ("color_to_normals_overlap", "LARGE"),
-        ("normals_to_curvature_blur_radius", "SMALL"),
-        ("normals_to_height_seamless", True),
-        ("auto_download", False),
-    ], "DeepBump colour->normals")
-    crop_back(g, 38, ["37", 0], "normal_deepbump", "deepbump normal")
+    # DeepBump branch removed 2026-08-30: "Deep Bump (mtb)" is not registered
+    # at runtime on the worker (comfy-mtb only registers nodes whose imports
+    # succeed; its onnxruntime path fails there). It was only a second-opinion
+    # normal - PBRify (node 23) is the primary. Re-add if mtb runtime is fixed.
+    return g
+
+
+def hires_graph():
+    """2K albedo in its own request, alone, to stay under the response cap."""
+    g = core()
+    wrap_pad(g)
+    crop_back(g, 19, ["18", 0], "albedo2k", "albedo hires")
+    # core saves 10 (albedo1k) and 12 (seamcheck, fed by offset 11) are not
+    # wanted here; prune them and anything that then reaches no SaveImage.
+    for nid in ("10", "11", "12"):
+        assert g[nid]["class_type"] in ("SaveImage", "OffsetImage"), nid
+        del g[nid]
     return g
 
 
@@ -235,7 +262,8 @@ def validate(g, name):
 if __name__ == "__main__":
     problems = []
     for g, fn, label in ((full_graph(), "workflow.texture.api.json", "full"),
-                         (fast_graph(), "workflow.texture.fast.api.json", "fast")):
+                         (fast_graph(), "workflow.texture.fast.api.json", "fast"),
+                         (hires_graph(), "workflow.texture.hires.api.json", "hires")):
         problems += validate(g, label)
         with open(fn, "w", encoding="utf-8") as fh:
             json.dump(g, fh, indent=2)

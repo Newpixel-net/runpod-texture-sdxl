@@ -115,7 +115,7 @@
         2
       ],
       "tiling": "enable",
-      "copy_vae": "Make a copy"
+      "copy_vae": "Modify in place"
     },
     "class_type": "MakeCircularVAE",
     "_meta": {
