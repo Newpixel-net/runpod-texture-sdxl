@@ -44,11 +44,13 @@ RUN comfy model download \
 # All five land in models/upscale_models and load through the core
 # UpscaleModelLoader / ImageUpscaleWithModel pair - that is exactly how NVIDIA's
 # own ComfyUI-RTX-Remix workflow (workflows/restapi_pbrify.json) drives them.
+# curl does not exist in the base image (first build failed here, exit 127) -
+# python3 + urllib is the one downloader the image is guaranteed to carry,
+# and urllib follows the GitHub-release 302 to the CDN.
 RUN set -eux; \
     mkdir -p /comfyui/models/upscale_models; \
-    curl -fL -o /tmp/pbrify.zip \
-      https://github.com/Kim2091/PBRify_Remix/releases/download/v1.7.2_ComfyOnly/PBRify_Remix_1.7.2_ComfyUI_ONLY.zip; \
-    python -c "import zipfile;zipfile.ZipFile('/tmp/pbrify.zip').extractall('/comfyui/models/upscale_models')"; \
+    python3 -c "import urllib.request; urllib.request.urlretrieve('https://github.com/Kim2091/PBRify_Remix/releases/download/v1.7.2_ComfyOnly/PBRify_Remix_1.7.2_ComfyUI_ONLY.zip', '/tmp/pbrify.zip')"; \
+    python3 -c "import zipfile; zipfile.ZipFile('/tmp/pbrify.zip').extractall('/comfyui/models/upscale_models')"; \
     rm -f /tmp/pbrify.zip; \
     ls -l /comfyui/models/upscale_models
 
